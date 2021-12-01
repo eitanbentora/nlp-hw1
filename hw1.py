@@ -1,3 +1,4 @@
-print("helloo")
+import pandas as pd
 
-print("bye")
+filename = r'..\data\train.tagged'
+train_data = pd.read_csv(filename, sep='\t', lineterminator='\r')
