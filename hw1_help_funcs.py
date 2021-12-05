@@ -10,6 +10,7 @@ import sys
 import pickle
 from sklearn import svm
 from sklearn.metrics import f1_score
+from gensim.models import Word2Vec
 
 
 # tomer's code for a seed
@@ -57,6 +58,37 @@ def data_to_vectors(data, glove):
             else:
                 word[0] = glove[word[0].lower()]
     return vec_data
+
+def data_to_vectors_extra_features(data1, data2, glove):
+    '''
+    :param data1: data of words created by read_file
+    :param data1: data of words created by read_file
+    :return: data1 with vectorized glove representation for the words.
+    if not in glove, use the the vector found in the word2vec model trained
+    '''
+    vec_data = data1.copy()
+    train_sentences = [[word[0].lower() for word in sen] for sen in data1]
+    dev_sentences = [[word[0].lower() for word in sen] for sen in data2]
+    sentences = train_sentences + dev_sentences
+    model = Word2Vec(sentences=sentences, vector_size=200, window=5,
+                     min_count=1, workers=4, epochs=100)
+    for sen in vec_data:
+        for word in sen:
+            to_add = []
+            # has capital letters
+            to_add.append(float(word[0].lower() != word[0]))
+            if word[0].lower() not in glove.key_to_index:
+                if word[0].lower() not in model.wv:
+                    print("not suppose to happen...") #TODO remove
+                    word[0] = (np.random.random(200) * 2 - 1)
+                else:
+                    word[0] = model.wv[word[0].lower()]
+            else:
+                word[0] = glove[word[0].lower()]
+            word[0] = word[0] + to_add
+    return vec_data
+
+
 
 def add_context(vec_data, dot_repr):
     '''
