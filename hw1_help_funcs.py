@@ -45,6 +45,24 @@ def read_file(path):
                 current_sentence = []
     return data
 
+def clean_text(s, remove_words=None, lemmatizer=None):
+    #s = re.sub(r'([a-z](?=[A-Z])|[A-Z](?=[A-Z][a-z]))', r'\1 ', s)
+
+    # Leave only english charachters (this removes numbers)
+    s = re.sub(r'[^A-Za-z .]+', ' ', s)
+    s = s.lower()
+    # reduce multiple spaces
+    s = re.sub(' +', ' ', s)
+    if lemmatizer is not None:
+        new_s = []
+        for w in s.split():
+            new_s.append(lemmatizer.lemmatize(w))
+        s = ' '.join(new_s)
+    # Removing bad words
+    if remove_words is not None:
+        s = ' '.join(filter(lambda x: x not in remove_words, s.split()))
+    return s
+
 def data_to_vectors(data, glove):
     '''
     :param data: data of words created by read_file
@@ -72,11 +90,36 @@ def data_to_vectors_extra_features(data1, data2, glove):
     sentences = train_sentences + dev_sentences
     model = Word2Vec(sentences=sentences, vector_size=200, window=5,
                      min_count=1, workers=4, epochs=100)
-    for sen in vec_data:
-        for word in sen:
+    for i, sen in enumerate(vec_data):
+        for j, word in enumerate(sen):
             to_add = []
             # has capital letters
             to_add.append(float(word[0].lower() != word[0]))
+            # all capital letters
+            all_capital_flag = True
+            for let in word[0]:
+                if let.lower() == let:
+                    all_capital_flag = False
+                    break
+            to_add.append(float(all_capital_flag))
+            # info about the word before
+            if j == 0 or i == 0:
+                to_add.append(0)
+                to_add.append(0)
+            else:
+                to = float(sen[j-1][0] == glove['to'])
+                at = float(sen[j-1][0] == glove['at'])
+                on = float(sen[j-1][0] == glove['on'])
+                _in = float(sen[j-1][0] == glove['in'])
+                qu = float(sen[j - 1][0] == glove["'"])
+                dots = float(sen[j - 1][0] == glove[':'])
+                to_add.append(4*at + 3*to + 2*on + 1*_in)
+                to_add.append(2*dots + 1*qu)
+            if j == len(sen)-1:
+                to_add.append(0)
+            else:
+                won = float(sen[j+1][0].lower() == 'won')
+                to_add.append(won)
             if word[0].lower() not in glove.key_to_index:
                 if word[0].lower() not in model.wv:
                     print("not suppose to happen...") #TODO remove
@@ -85,7 +128,7 @@ def data_to_vectors_extra_features(data1, data2, glove):
                     word[0] = model.wv[word[0].lower()]
             else:
                 word[0] = glove[word[0].lower()]
-            word[0] = word[0] + to_add
+            word[0] = np.concatenate((word[0], to_add))
     return vec_data
 
 
