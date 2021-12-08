@@ -12,7 +12,7 @@ if __name__ == '__main__':
     # dev_filename = r'..\data\dev.tagged'
     print(train_filename, dev_filename)
 
-    # GLOVE_PATH = 'glove-twitter-200' # ToDo - retuen to code
+    # GLOVE_PATH = 'glove-twitter-200' # ToDo - return to code
     # glove = downloader.load(GLOVE_PATH)
 
     train_data = data_to_vectors(read_file(train_filename), glove)
@@ -30,7 +30,7 @@ if __name__ == '__main__':
                               batch_size=batch_size)
     valid_loader = DataLoader(dev_data, shuffle=False,
                               batch_size=batch_size)
-    epochs = 10
+    epochs = 100
     print_every = 1000
     clip = 1000  # gradient clipping
     net.train()

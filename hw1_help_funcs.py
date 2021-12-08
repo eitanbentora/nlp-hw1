@@ -116,28 +116,28 @@ def data_to_vectors_extra_features(data1, data2, glove):
 
 
 
-def add_context(vec_data, dot_repr):
-    '''
-    :param vec_data: data as created by data_to_vectors
-    :param dot_repr: the glove representation of '.'
-    :return: vec_data with each data vector surrounded by its' neighbors
-    '''
-    vec_data_with_context = vec_data.copy()
-    for sen in vec_data:
-        for i, word in enumerate(sen):
-            if i != 0 and i != (len(sen) - 1):
-                word[0] = np.concatenate(
-                    (sen[i - 1][0], sen[i - 1][0], sen[i + 1][0]))
-            if i == 0 and i != (len(sen) - 1):
-                word[0] = np.concatenate(
-                    (dot_repr, sen[i - 1][0], sen[i + 1][0]))
-            if i != 0 and i == (len(sen) - 1):
-                word[0] = np.concatenate(
-                    (sen[i - 1][0], sen[i - 1][0], dot_repr))
-            if i == 0 and i == (len(sen) - 1):
-                word[0] = np.concatenate(
-                    (dot_repr, sen[i - 1][0], dot_repr))
-    return vec_data_with_context
+# def add_context(vec_data, dot_repr):
+#     '''
+#     :param vec_data: data as created by data_to_vectors
+#     :param dot_repr: the glove representation of '.'
+#     :return: vec_data with each data vector surrounded by its' neighbors
+#     '''
+#     vec_data_with_context = vec_data.copy()
+#     for sen in vec_data:
+#         for i, word in enumerate(sen):
+#             if i != 0 and i != (len(sen) - 1):
+#                 word[0] = np.concatenate(
+#                     (sen[i - 1][0], sen[i - 1][0], sen[i + 1][0]))
+#             if i == 0 and i != (len(sen) - 1):
+#                 word[0] = np.concatenate(
+#                     (dot_repr, sen[i - 1][0], sen[i + 1][0]))
+#             if i != 0 and i == (len(sen) - 1):
+#                 word[0] = np.concatenate(
+#                     (sen[i - 1][0], sen[i - 1][0], dot_repr))
+#             if i == 0 and i == (len(sen) - 1):
+#                 word[0] = np.concatenate(
+#                     (dot_repr, sen[i - 1][0], dot_repr))
+#     return vec_data_with_context
 
 def sep_X_y(vec_data):
     '''
@@ -236,18 +236,17 @@ def add_context(vec_data, context_size, sen_separator):
     length = context_size
     for sen in vec_data:
         for i, word in enumerate(sen):
-            length += context_size
+            length += 1
             if i == len(sen) - 1:
                 length += context_size
+    # print(f'length is {length}')
     one_vec_data = np.zeros(length*vec_length)
-    jump = 0
-    index = 0
+    jump, index = 0, 0
     non_data_idx = []
-    for i in range(context_size):
-        shift = i*context_size
-        np.put(one_vec_data,
-               np.arange(len(one_vec_data)-vec_length - shift, len(one_vec_data)) - shift,
-               sen_separator)
+    # for i in range(context_size):
+    #     np.put(one_vec_data,
+    #            np.arange(len(one_vec_data) - (i+1) * vec_length - len(one_vec_data) - i * vec_length),
+    #            sen_separator)
     for i, sen in enumerate(vec_data):
         for j, word in enumerate(sen):
             if j == 0:
@@ -257,15 +256,30 @@ def add_context(vec_data, context_size, sen_separator):
                                                    vec_length*(index+jump)+vec_length), sen_separator)
                     jump += 1
 
-            np.put(one_vec_data, np.arange(vec_length*(index+jump),
-                                           vec_length*(index+jump)+vec_length), word[0])
+            np.put(one_vec_data, np.arange(vec_length*(index+jump), vec_length*(index+jump)+vec_length), word[0])
             index += 1
-
+    # print(f'jump is {jump}')
+    non_data_add = [length-k for k in range(context_size, 0, -1)]
+    # print(non_data_add)
+    non_data_idx += non_data_add
+    # print(non_data_idx)
     return [one_vec_data[
             vec_length * i - context_size * vec_length:vec_length * i + (
                         context_size + 1) * vec_length]
             for i in range(1, len(one_vec_data) // vec_length - 1) if
             not (i in non_data_idx)]
+
+
+def agg_context_mean(X, context_size, vec_length):
+    X_new = []
+    for x in X:
+        x_mean_start, x_mean_end = np.zeros(vec_length), np.zeros(vec_length)
+        for i in range(context_size):
+            x_mean_start += x[i*vec_length: (i+1)*vec_length]
+            x_mean_end += x[len(x)-(i+1)*vec_length: len(x)-i*vec_length]
+        x_mean_start, x_mean_end = x_mean_start/context_size, x_mean_end/context_size
+        X_new.append(np.concatenate((x_mean_start, x[context_size*vec_length: (context_size + 1)*vec_length], x_mean_end)))
+    return X_new
 
 
 if __name__ == '__main__':
