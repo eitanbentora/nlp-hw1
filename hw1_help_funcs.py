@@ -45,23 +45,6 @@ def read_file(path):
                 current_sentence = []
     return data
 
-def clean_text(s, remove_words=None, lemmatizer=None):
-    #s = re.sub(r'([a-z](?=[A-Z])|[A-Z](?=[A-Z][a-z]))', r'\1 ', s)
-
-    # Leave only english charachters (this removes numbers)
-    s = re.sub(r'[^A-Za-z .]+', ' ', s)
-    s = s.lower()
-    # reduce multiple spaces
-    s = re.sub(' +', ' ', s)
-    if lemmatizer is not None:
-        new_s = []
-        for w in s.split():
-            new_s.append(lemmatizer.lemmatize(w))
-        s = ' '.join(new_s)
-    # Removing bad words
-    if remove_words is not None:
-        s = ' '.join(filter(lambda x: x not in remove_words, s.split()))
-    return s
 
 def data_to_vectors(data, glove):
     '''
@@ -171,10 +154,10 @@ def sep_X_y(vec_data):
     return X, y
 
 class Network(nn.Module):
-   def __init__(self):
+   def __init__(self, input_dim=200):
        super().__init__()
        self.hidden_dim = 10
-       self.layer_1 = torch.nn.Linear(200, self.hidden_dim)
+       self.layer_1 = torch.nn.Linear(input_dim, self.hidden_dim)
        self.layer_2 = torch.nn.Linear(self.hidden_dim, 1)
        self.activation = F.relu
 
@@ -240,6 +223,49 @@ def train_nn(net,train_loader, valid_loader, clip=1000 ,epochs=10, print_every=1
                       "Loss: {:.6f}...".format(loss.item()),
                       "Val Loss: {:.6f}".format(np.mean(val_losses)))
     return net
+
+
+def add_context(vec_data, context_size, sen_separator):
+    """
+    :param vec_data: data read by data_to_vectors...
+    :param context_size: size of context from each size
+    :param sen_separator: the vector separating between sentences
+    :return: the data with its context
+    """
+    vec_length = vec_data[0][0][0].shape[0]
+    length = context_size
+    for sen in vec_data:
+        for i, word in enumerate(sen):
+            length += context_size
+            if i == len(sen) - 1:
+                length += context_size
+    one_vec_data = np.zeros(length*vec_length)
+    jump = 0
+    index = 0
+    non_data_idx = []
+    for i in range(context_size):
+        shift = i*context_size
+        np.put(one_vec_data,
+               np.arange(len(one_vec_data)-vec_length - shift, len(one_vec_data)) - shift,
+               sen_separator)
+    for i, sen in enumerate(vec_data):
+        for j, word in enumerate(sen):
+            if j == 0:
+                for i in range(context_size):
+                    non_data_idx.append(index+jump)
+                    np.put(one_vec_data, np.arange(vec_length*(index+jump),
+                                                   vec_length*(index+jump)+vec_length), sen_separator)
+                    jump += 1
+
+            np.put(one_vec_data, np.arange(vec_length*(index+jump),
+                                           vec_length*(index+jump)+vec_length), word[0])
+            index += 1
+
+    return [one_vec_data[
+            vec_length * i - context_size * vec_length:vec_length * i + (
+                        context_size + 1) * vec_length]
+            for i in range(1, len(one_vec_data) // vec_length - 1) if
+            not (i in non_data_idx)]
 
 
 if __name__ == '__main__':
