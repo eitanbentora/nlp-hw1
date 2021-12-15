@@ -85,25 +85,76 @@ def data_to_vectors_extra_features(data1, data2, glove):
                     all_capital_flag = False
                     break
             to_add.append(float(all_capital_flag))
-            # info about the word before
-            if j == 0 or i == 0:
-                to_add.append(0)
-                to_add.append(0)
-            else:
-                to = float(sen[j-1][0] == glove['to'])
-                at = float(sen[j-1][0] == glove['at'])
-                on = float(sen[j-1][0] == glove['on'])
-                _in = float(sen[j-1][0] == glove['in'])
-                qu = float(sen[j - 1][0] == glove["'"])
-                dots = float(sen[j - 1][0] == glove[':'])
-                to_add.append(4*at + 3*to + 2*on + 1*_in)
-                to_add.append(2*dots + 1*qu)
-            if j == len(sen)-1:
-                to_add.append(0)
-            else:
-                won = float(sen[j+1][0].lower() == 'won')
-                to_add.append(won)
+            # firs letter is capital
+            to_add.append(float(word[0][0].lower() != word[0]))
+            #has 2 non sequential capital
+            non_seq_cap = 0
+            if len(word[0]) > 2:
+                if word[0][0] != word[0][0].lower() and word[0][1] == word[0][1].lower():
+                    if word[0][2:].lower() != word[0][1:].lower():
+                        non_seq_cap = 1
+            to_add.append(non_seq_cap)
+            # has @
+            has_et = '@' in word[0]
+            to_add.append(float(has_et))
+            has_hash = '#' in word[0]
+            to_add.append(float(has_hash))
+            signs = ['@','#','$','%','^','&','*','(',')',':','}','{',';','.','/',',','?','~','!','[',']','-','_','"']
+            # starts, endings and actions
+            to_add.append(float(word[0].lower() in signs))
+            to_add.append(float(word[0].lower() in ['won', 'went', 'did' ]))
+            to_add.append(float(word[0].lower() in ['at', 'on', 'in', 'to']))
+            to_add.append(float(word[0].lower().endswith('ed')))
+            to_add.append(float(word[0].lower().endswith('er')))
+            to_add.append(float(word[0].lower().endswith('ing')))
+            to_add.append(float(word[0].lower().startswith('re')))
+            # has num
+            for let in word[0]:
+                if ord('9') >= ord(let) >= ord('0'):
+                    word[0] = 'seven'
+                    break
+            only_signs = True
+            for let in word[0]:
+                if let not in signs:
+                    only_signs = False
+                    break
+            if only_signs:
+                word[0] = word[0][0]
+            if len(word[0]) > 1:
+                if word[0].lower().replace("'", '') in glove.key_to_index:
+                    word[0] = word[0].replace("'", '')
+                if word[0].lower().replace("#", '') in glove.key_to_index:
+                    word[0] = word[0].replace("#", '')
+                if word[0].lower().replace("*", '') in glove.key_to_index:
+                    word[0] = word[0].replace("*", '')
+                if word[0].lower().replace(".", '') in glove.key_to_index:
+                    word[0] = word[0].replace(".", '')
+                if word[0].lower().replace("[", '') in glove.key_to_index:
+                    word[0] = word[0].replace("[", '')
+                if word[0].lower().replace("]", '') in glove.key_to_index:
+                    word[0] = word[0].replace("]", '')
+                if word[0].lower().replace("(", '') in glove.key_to_index:
+                    word[0] = word[0].replace("(", '')
+                if word[0].lower().replace(")", '') in glove.key_to_index:
+                    word[0] = word[0].replace(")", '')
+                if word[0].lower().replace("-", '') in glove.key_to_index:
+                    word[0] = word[0].replace("-", '')
+            if len(word[0]) == 2:
+                if word[0][0] == ':' or word[0][0] == '=' or word[0][0] == ';':
+                    if word[0][1] == 'D':
+                        word[0] = 'smilie'
             if word[0].lower() not in glove.key_to_index:
+                #print(word[0])
+                # cont_flag = False
+                # for i in range(len(word[0]), 0, -1):
+                #     if word[0][:i].lower() in glove.key_to_index:
+                #         print(word[0][:i])
+                #         word[0] = glove[word[0][:i].lower()]
+                #         word[0] = np.concatenate((word[0], to_add))
+                #         cont_flag = True
+                #         break
+                # if cont_flag:
+                #     continue
                 if word[0].lower() not in model.wv:
                     print("not suppose to happen...") #TODO remove
                     word[0] = (np.random.random(200) * 2 - 1)
