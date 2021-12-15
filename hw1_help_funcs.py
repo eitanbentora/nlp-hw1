@@ -13,6 +13,7 @@ from sklearn.metrics import f1_score
 from gensim.models import Word2Vec
 import copy
 
+
 # tomer's code for a seed
 def set_seed(seed=42):
     random.seed(seed)
@@ -23,12 +24,13 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 
-def read_file(path, mode='tagged'):
+def read_file(path):
     '''
     :param path: full path for a tagged file
     :return: data - a list of all the sentences(lists), each word as
     a 2 position list - word and tag
     '''
+    mode = path.split('.')[-1]
     data = []
     with open(path, 'r', encoding="utf8") as file:
         current_sentence = []
@@ -61,114 +63,106 @@ def data_to_vectors(data, glove):
                 word[0] = glove[word[0].lower()]
     return vec_data
 
-def data_to_vectors_extra_features(data1, data2, glove):
-    '''
-    :param data1: data of words created by read_file
-    :param data1: data of words created by read_file
-    :return: data1 with vectorized glove representation for the words.
-    if not in glove, use the the vector found in the word2vec model trained
-    '''
-    data1 = copy.deepcopy(data1)
-    data2 = copy.deepcopy(data2)
 
-    vec_data = data1.copy()
-    train_sentences = [[word[0].lower() for word in sen] for sen in data1]
-    dev_sentences = [[word[0].lower() for word in sen] for sen in data2]
-    sentences = train_sentences + dev_sentences
-    model = Word2Vec(sentences=sentences, vector_size=200, window=5,
-                     min_count=1, workers=4, epochs=100)
+def get_additional_features(word, signs):
+    """features to add to vector representation"""
+    to_add = []
+    # has capital letters
+    to_add.append(float(word[0].lower() != word[0]))
+    # all capital letters
+    all_capital_flag = True
+    for let in word[0]:
+        if let.lower() == let:
+            all_capital_flag = False
+            break
+    to_add.append(float(all_capital_flag))
+    # firs letter is capital
+    to_add.append(float(word[0][0].lower() != word[0]))
+    # has 2 non sequential capital
+    non_seq_cap = 0
+    if len(word[0]) > 2:
+        if word[0][0] != word[0][0].lower() and word[0][1] == word[0][1].lower():
+            if word[0][2:].lower() != word[0][1:].lower():
+                non_seq_cap = 1
+    to_add.append(non_seq_cap)
+    # has @
+    has_at = '@' in word[0]
+    to_add.append(float(has_at))
+    has_hash = '#' in word[0]
+    to_add.append(float(has_hash))
+
+    # starts, endings and actions
+    to_add.append(float(word[0].lower() in signs))
+    to_add.append(float(word[0].lower() in ['won', 'went', 'did']))
+    to_add.append(float(word[0].lower() in ['at', 'on', 'in', 'to']))
+    prefixes = ['re']
+    suffixes = ['ed', 'er', 'ing']
+    for prefix in prefixes:
+        to_add.append(float(word[0].lower().startswith(prefix)))
+    for suffix in suffixes:
+        to_add.append(float(word[0].lower().endswith(suffix)))
+    return to_add
+
+
+def replace_word(word, glove, signs):
+    # has num
+    for let in word[0]:
+        if ord('9') >= ord(let) >= ord('0'):
+            word[0] = 'seven'
+            break
+    only_signs = True
+    for let in word[0]:
+        if let not in signs:
+            only_signs = False
+            break
+    if only_signs:
+        word[0] = word[0][0]
+
+    replace_signs = ["'", '#', '*', '.', '[', ']', '(', ')', '-']
+    if len(word[0]) > 1:
+        for sign in replace_signs:
+            if word[0].lower().replace(sign, '') in glove.key_to_index:
+                word[0] = word[0].replace(sign, '')
+    if len(word[0]) == 2:
+        if word[0][0] == ':' or word[0][0] == '=' or word[0][0] == ';':
+            if word[0][1] == 'D':
+                word[0] = 'smiley'
+    return word
+
+
+def data_to_vectors_extra_features(data, glove, word2vec_model=None):
+    """
+    :param data: data of words created by read_file
+    :return: data with vectorized glove representation for the words.
+    if not in glove, use the the vector found in the word2vec model trained
+    """
+    vec_data = copy.deepcopy(data)
+    sentences = [[word[0].lower() for word in sen] for sen in data]
+    signs = ['@', '#', '$', '%', '^', '&', '*', '(', ')', ':', '}', '{', ';', '.', '/', ',', '?', '~', '!', '[', ']',
+             '-', '_', '"']
+    if word2vec_model is None:
+        word2vec_model = Word2Vec(sentences=sentences, vector_size=200, window=5, min_count=1, workers=4, epochs=100)
+    missing_glove_words = 0
     for i, sen in enumerate(vec_data):
         for j, word in enumerate(sen):
-            to_add = []
-            # has capital letters
-            to_add.append(float(word[0].lower() != word[0]))
-            # all capital letters
-            all_capital_flag = True
-            for let in word[0]:
-                if let.lower() == let:
-                    all_capital_flag = False
-                    break
-            to_add.append(float(all_capital_flag))
-            # firs letter is capital
-            to_add.append(float(word[0][0].lower() != word[0]))
-            #has 2 non sequential capital
-            non_seq_cap = 0
-            if len(word[0]) > 2:
-                if word[0][0] != word[0][0].lower() and word[0][1] == word[0][1].lower():
-                    if word[0][2:].lower() != word[0][1:].lower():
-                        non_seq_cap = 1
-            to_add.append(non_seq_cap)
-            # has @
-            has_at = '@' in word[0]
-            to_add.append(float(has_at))
-            has_hash = '#' in word[0]
-            to_add.append(float(has_hash))
-            signs = ['@','#','$','%','^','&','*','(',')',':','}','{',';','.','/',',','?','~','!','[',']','-','_','"']
-            # starts, endings and actions
-            to_add.append(float(word[0].lower() in signs))
-            to_add.append(float(word[0].lower() in ['won', 'went', 'did' ]))
-            to_add.append(float(word[0].lower() in ['at', 'on', 'in', 'to']))
-            to_add.append(float(word[0].lower().endswith('ed')))
-            to_add.append(float(word[0].lower().endswith('er')))
-            to_add.append(float(word[0].lower().endswith('ing')))
-            to_add.append(float(word[0].lower().startswith('re')))
-            # has num
-            for let in word[0]:
-                if ord('9') >= ord(let) >= ord('0'):
-                    word[0] = 'seven'
-                    break
-            only_signs = True
-            for let in word[0]:
-                if let not in signs:
-                    only_signs = False
-                    break
-            if only_signs:
-                word[0] = word[0][0]
-            if len(word[0]) > 1:
-                if word[0].lower().replace("'", '') in glove.key_to_index:
-                    word[0] = word[0].replace("'", '')
-                if word[0].lower().replace("#", '') in glove.key_to_index:
-                    word[0] = word[0].replace("#", '')
-                if word[0].lower().replace("*", '') in glove.key_to_index:
-                    word[0] = word[0].replace("*", '')
-                if word[0].lower().replace(".", '') in glove.key_to_index:
-                    word[0] = word[0].replace(".", '')
-                if word[0].lower().replace("[", '') in glove.key_to_index:
-                    word[0] = word[0].replace("[", '')
-                if word[0].lower().replace("]", '') in glove.key_to_index:
-                    word[0] = word[0].replace("]", '')
-                if word[0].lower().replace("(", '') in glove.key_to_index:
-                    word[0] = word[0].replace("(", '')
-                if word[0].lower().replace(")", '') in glove.key_to_index:
-                    word[0] = word[0].replace(")", '')
-                if word[0].lower().replace("-", '') in glove.key_to_index:
-                    word[0] = word[0].replace("-", '')
-            if len(word[0]) == 2:
-                if word[0][0] == ':' or word[0][0] == '=' or word[0][0] == ';':
-                    if word[0][1] == 'D':
-                        word[0] = 'smiley'
+            # add additional data
+            to_add = get_additional_features(word, signs)
+            # replace word if it is not in glove
+            word = replace_word(word, glove, signs)
             if word[0].lower() not in glove.key_to_index:
-                #print(word[0])
-                # cont_flag = False
-                # for i in range(len(word[0]), 0, -1):
-                #     if word[0][:i].lower() in glove.key_to_index:
-                #         print(word[0][:i])
-                #         word[0] = glove[word[0][:i].lower()]
-                #         word[0] = np.concatenate((word[0], to_add))
-                #         cont_flag = True
-                #         break
-                # if cont_flag:
-                #     continue
-                if word[0].lower() not in model.wv:
-                    print("not suppose to happen...") #TODO remove
+                if word[0].lower() not in word2vec_model.wv:
+                    missing_glove_words += 1
+                    # TODO instead of this use the sentence's/window's avg
+                    # print("not suppose to happen...")  # TODO remove
                     word[0] = (np.random.random(200) * 2 - 1)
                 else:
-                    word[0] = model.wv[word[0].lower()]
+                    word[0] = word2vec_model.wv[word[0].lower()]
             else:
                 word[0] = glove[word[0].lower()]
             word[0] = np.concatenate((word[0], to_add))
-    return vec_data
-
+    if missing_glove_words > 0:
+        print("Amount of words missing from glove: ", missing_glove_words)
+    return vec_data, word2vec_model
 
 
 # def add_context(vec_data, dot_repr):
@@ -208,28 +202,30 @@ def sep_X_y(vec_data):
             y.append(word[1])
     return X, y
 
+
 class Network(nn.Module):
-   def __init__(self, input_dim=200):
-       super().__init__()
-       self.hidden_dim = 10
-       self.layer_1 = torch.nn.Linear(input_dim, self.hidden_dim)
-       self.layer_2 = torch.nn.Linear(self.hidden_dim, 1)
-       self.activation = F.relu
+    def __init__(self, input_dim=200):
+        super().__init__()
+        self.hidden_dim = 10
+        self.layer_1 = torch.nn.Linear(input_dim, self.hidden_dim)
+        self.layer_2 = torch.nn.Linear(self.hidden_dim, 1)
+        self.activation = F.relu
 
-   def forward(self, x):
-       x = self.layer_1(x)        # x.size() -> [batch_size, self.hidden_dim]
-       x = self.activation(x)     # x.size() -> [batch_size, self.hidden_dim]
-       x = self.layer_2(x)        # x.size() -> [batch_size, 1]
-       x = torch.sigmoid(x)
-       return x
+    def forward(self, x):
+        x = self.layer_1(x)  # x.size() -> [batch_size, self.hidden_dim]
+        x = self.activation(x)  # x.size() -> [batch_size, self.hidden_dim]
+        x = self.layer_2(x)  # x.size() -> [batch_size, 1]
+        x = torch.sigmoid(x)
+        return x
 
-def train_nn(net, train_loader, valid_loader, weights=(1,1), clip=1000
-             ,epochs=10, print_every=1000, lr=0.0002, optimizer='Adam', loss_func='BCELoss'):
+
+def train_nn(net, train_loader, valid_loader, weights=(1, 1), clip=1000
+             , epochs=10, print_every=1000, lr=0.0002, optimizer='Adam', loss_func='BCELoss'):
     net.train()
-    optimizer_dict = {'Adam':torch.optim.Adam(net.parameters(), lr=lr),
-                      'SGD':torch.optim.SGD(net.parameters(), lr=lr)}
-    loss_func_dict = {'BCELoss':torch.nn.BCELoss(reduction='none'),
-                      'MSELoss':torch.nn.MSELoss(reduction='none')}
+    optimizer_dict = {'Adam': torch.optim.Adam(net.parameters(), lr=lr),
+                      'SGD': torch.optim.SGD(net.parameters(), lr=lr)}
+    loss_func_dict = {'BCELoss': torch.nn.BCELoss(reduction='none'),
+                      'MSELoss': torch.nn.MSELoss(reduction='none')}
     optimizer = optimizer_dict[optimizer]
     loss_func = loss_func_dict[loss_func]
     counter = 0
@@ -250,7 +246,7 @@ def train_nn(net, train_loader, valid_loader, weights=(1,1), clip=1000
             predictions = net(x)
             # calculate the loss and perform backprop
             weights = torch.from_numpy(
-                np.array([1 if i==1 else 0.7 for i in labels]))
+                np.array([1 if i == 1 else 0.7 for i in labels]))
             temp_loss = loss_func(predictions.squeeze(),
                                   labels.float().squeeze())
             loss = torch.mean(weights * temp_loss)
@@ -278,7 +274,7 @@ def train_nn(net, train_loader, valid_loader, weights=(1,1), clip=1000
                                -1)  # x.size() -> [batch_size, 1]
                     val_predictions = net(x)
                     val_weights = torch.from_numpy(
-                        np.array([1 if i==1 else 0.7 for i in labels]))
+                        np.array([1 if i == 1 else 0.7 for i in labels]))
                     temp_val_loss = loss_func(val_predictions.squeeze(),
                                               labels.float().squeeze())
                     val_loss = torch.mean(val_weights * temp_val_loss)
@@ -291,6 +287,7 @@ def train_nn(net, train_loader, valid_loader, weights=(1,1), clip=1000
                       "Val Loss: {:.6f}".format(np.mean(val_losses)))
     return net
 
+
 class Network2(nn.Module):
     def __init__(self, input_dim=600):
         super().__init__()
@@ -302,16 +299,13 @@ class Network2(nn.Module):
         self.activation = F.relu
 
     def forward(self, x):
-        x = self.layer_1(x)        # x.size() -> [batch_size, self.hidden_dim]
-        x = self.activation(x)     # x.size() -> [batch_size, self.hidden_dim]
-        x = self.layer_2(x)        # x.size() -> [batch_size, 1]
+        x = self.layer_1(x)  # x.size() -> [batch_size, self.hidden_dim]
+        x = self.activation(x)  # x.size() -> [batch_size, self.hidden_dim]
+        x = self.layer_2(x)  # x.size() -> [batch_size, 1]
         x = self.activation(x)
         x = self.layer_3(x)
         x = torch.sigmoid(x)
         return x
-
-
-
 
 
 def add_context(vec_data, context_size, sen_separator):
@@ -329,7 +323,7 @@ def add_context(vec_data, context_size, sen_separator):
             if i == len(sen) - 1:
                 length += context_size
     # print(f'length is {length}')
-    one_vec_data = np.zeros(length*vec_length)
+    one_vec_data = np.zeros(length * vec_length)
     jump, index = 0, 0
     non_data_idx = []
     # for i in range(context_size):
@@ -340,21 +334,22 @@ def add_context(vec_data, context_size, sen_separator):
         for j, word in enumerate(sen):
             if j == 0:
                 for i in range(context_size):
-                    non_data_idx.append(index+jump)
-                    np.put(one_vec_data, np.arange(vec_length*(index+jump),
-                                                   vec_length*(index+jump)+vec_length), sen_separator)
+                    non_data_idx.append(index + jump)
+                    np.put(one_vec_data, np.arange(vec_length * (index + jump),
+                                                   vec_length * (index + jump) + vec_length), sen_separator)
                     jump += 1
 
-            np.put(one_vec_data, np.arange(vec_length*(index+jump), vec_length*(index+jump)+vec_length), word[0])
+            np.put(one_vec_data, np.arange(vec_length * (index + jump), vec_length * (index + jump) + vec_length),
+                   word[0])
             index += 1
     # print(f'jump is {jump}')
-    non_data_add = [length-k for k in range(context_size, 0, -1)]
+    non_data_add = [length - k for k in range(context_size, 0, -1)]
     # print(non_data_add)
     non_data_idx += non_data_add
     # print(non_data_idx)
     return [one_vec_data[
             vec_length * i - context_size * vec_length:vec_length * i + (
-                        context_size + 1) * vec_length]
+                    context_size + 1) * vec_length]
             for i in range(1, len(one_vec_data) // vec_length - 1) if
             not (i in non_data_idx)]
 
@@ -364,16 +359,15 @@ def agg_context_mean(X, context_size, vec_length):
     for x in X:
         x_mean_start, x_mean_end = np.zeros(vec_length), np.zeros(vec_length)
         for i in range(context_size):
-            x_mean_start += x[i*vec_length: (i+1)*vec_length]
-            x_mean_end += x[len(x)-(i+1)*vec_length: len(x)-i*vec_length]
-        x_mean_start, x_mean_end = x_mean_start/context_size, x_mean_end/context_size
-        X_new.append(np.concatenate((x_mean_start, x[context_size*vec_length: (context_size + 1)*vec_length], x_mean_end)))
+            x_mean_start += x[i * vec_length: (i + 1) * vec_length]
+            x_mean_end += x[len(x) - (i + 1) * vec_length: len(x) - i * vec_length]
+        x_mean_start, x_mean_end = x_mean_start / context_size, x_mean_end / context_size
+        X_new.append(
+            np.concatenate((x_mean_start, x[context_size * vec_length: (context_size + 1) * vec_length], x_mean_end)))
     return X_new
 
 
 if __name__ == '__main__':
-
-
     set_seed()
     ####################### To Remove
     with open('glove.pickle', 'rb') as handle:
@@ -384,7 +378,6 @@ if __name__ == '__main__':
     # train_filename, = r'..\data\train.tagged'
     # dev_filename = r'..\data\dev.tagged'
     print(train_filename, dev_filename)
-
 
     # GLOVE_PATH = 'glove-twitter-200' # ToDo - retuen to code
     # glove = downloader.load(GLOVE_PATH)
@@ -421,9 +414,3 @@ if __name__ == '__main__':
     nn_dev_predictions = torch.round(net(X_dev_tensor)).detach().numpy()
     print("F1 score for nn model is: {:.2f}".format(
         f1_score(y_dev, nn_dev_predictions)))
-
-
-
-
-
-
