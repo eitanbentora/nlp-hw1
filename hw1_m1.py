@@ -23,7 +23,7 @@ if __name__ == '__main__':
     X_dev, y_dev = sep_X_y(dev_data)
 
     #  svm model
-    svm_model = svm.SVC()
+    svm_model = svm.SVC(C=100)
     svm_model.fit(X_train, y_train)
     dev_svm_predictions = svm_model.predict(X_dev)
     print("F1 score for svm model is: {:.2f}".format(f1_score(y_dev, dev_svm_predictions)))

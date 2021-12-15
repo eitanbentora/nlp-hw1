@@ -30,11 +30,11 @@ if __name__ == '__main__':
                               batch_size=batch_size)
     valid_loader = DataLoader(dev_data, shuffle=False,
                               batch_size=batch_size)
-    epochs = 100
-    print_every = 1000
-    clip = 1000  # gradient clipping
-    net.train()
-    net = train_nn(net, train_loader, valid_loader, clip, epochs, print_every)
+    net_params = {'epochs': 10, 'print_every': 1000, 'clip': 1000,
+                  'lr': 0.2,
+                  'optimizer': 'SGD', 'loss_func': 'MSELoss',
+                  'weights': [1, 1]}
+    net = train_nn(net, train_loader, valid_loader, **net_params)
     X_dev_tensor = torch.FloatTensor(X_dev).unsqueeze(0)
     X_dev_tensor = X_dev_tensor.view(len(X_dev), -1)
     nn_dev_predictions = torch.round(net(X_dev_tensor)).detach().numpy()

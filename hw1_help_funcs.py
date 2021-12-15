@@ -11,7 +11,7 @@ import pickle
 from sklearn import svm
 from sklearn.metrics import f1_score
 from gensim.models import Word2Vec
-
+import copy
 
 # tomer's code for a seed
 def set_seed(seed=42):
@@ -23,22 +23,23 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 
-def read_file(path):
+def read_file(path, mode='tagged'):
     '''
     :param path: full path for a tagged file
     :return: data - a list of all the sentences(lists), each word as
     a 2 position list - word and tag
     '''
     data = []
-    with open(path, 'r') as file:
+    with open(path, 'r', encoding="utf8") as file:
         current_sentence = []
         for line in file:
             if line != '\n':
                 current_word = line.replace('\n', '').split("\t")
-                if current_word[1][0] == 'O':
-                    current_word[1] = 0
-                else:
-                    current_word[1] = 1
+                if mode == 'tagged':
+                    if current_word[1][0] == 'O':
+                        current_word[1] = 0
+                    else:
+                        current_word[1] = 1
                 current_sentence.append(current_word)
             else:
                 data.append(current_sentence)
@@ -67,6 +68,9 @@ def data_to_vectors_extra_features(data1, data2, glove):
     :return: data1 with vectorized glove representation for the words.
     if not in glove, use the the vector found in the word2vec model trained
     '''
+    data1 = copy.deepcopy(data1)
+    data2 = copy.deepcopy(data2)
+
     vec_data = data1.copy()
     train_sentences = [[word[0].lower() for word in sen] for sen in data1]
     dev_sentences = [[word[0].lower() for word in sen] for sen in data2]
@@ -95,8 +99,8 @@ def data_to_vectors_extra_features(data1, data2, glove):
                         non_seq_cap = 1
             to_add.append(non_seq_cap)
             # has @
-            has_et = '@' in word[0]
-            to_add.append(float(has_et))
+            has_at = '@' in word[0]
+            to_add.append(float(has_at))
             has_hash = '#' in word[0]
             to_add.append(float(has_hash))
             signs = ['@','#','$','%','^','&','*','(',')',':','}','{',';','.','/',',','?','~','!','[',']','-','_','"']
@@ -142,7 +146,7 @@ def data_to_vectors_extra_features(data1, data2, glove):
             if len(word[0]) == 2:
                 if word[0][0] == ':' or word[0][0] == '=' or word[0][0] == ';':
                     if word[0][1] == 'D':
-                        word[0] = 'smilie'
+                        word[0] = 'smiley'
             if word[0].lower() not in glove.key_to_index:
                 #print(word[0])
                 # cont_flag = False
@@ -219,9 +223,15 @@ class Network(nn.Module):
        x = torch.sigmoid(x)
        return x
 
-def train_nn(net,train_loader, valid_loader, clip=1000 ,epochs=10, print_every=1000):
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.2)
-    loss_func = torch.nn.MSELoss()
+def train_nn(net, train_loader, valid_loader, weights=(1,1), clip=1000
+             ,epochs=10, print_every=1000, lr=0.0002, optimizer='Adam', loss_func='BCELoss'):
+    net.train()
+    optimizer_dict = {'Adam':torch.optim.Adam(net.parameters(), lr=lr),
+                      'SGD':torch.optim.SGD(net.parameters(), lr=lr)}
+    loss_func_dict = {'BCELoss':torch.nn.BCELoss(reduction='none'),
+                      'MSELoss':torch.nn.MSELoss(reduction='none')}
+    optimizer = optimizer_dict[optimizer]
+    loss_func = loss_func_dict[loss_func]
     counter = 0
     for e in range(epochs):
         # batch loop
@@ -238,9 +248,12 @@ def train_nn(net,train_loader, valid_loader, clip=1000 ,epochs=10, print_every=1
             x = inputs.unsqueeze(0)  # x.size() -> [1, batch_size]
             x = x.view(batch_size, -1)  # x.size() -> [batch_size, 1]
             predictions = net(x)
-
             # calculate the loss and perform backprop
-            loss = loss_func(predictions.squeeze(), labels.float())
+            weights = torch.from_numpy(
+                np.array([1 if i==1 else 0.7 for i in labels]))
+            temp_loss = loss_func(predictions.squeeze(),
+                                  labels.float().squeeze())
+            loss = torch.mean(weights * temp_loss)
             loss.backward()
             # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
             nn.utils.clip_grad_norm_(net.parameters(), clip)
@@ -264,8 +277,11 @@ def train_nn(net,train_loader, valid_loader, clip=1000 ,epochs=10, print_every=1
                     x = x.view(batch_size,
                                -1)  # x.size() -> [batch_size, 1]
                     val_predictions = net(x)
-                    val_loss = loss_func(val_predictions.squeeze(),
-                                         labels.float())
+                    val_weights = torch.from_numpy(
+                        np.array([1 if i==1 else 0.7 for i in labels]))
+                    temp_val_loss = loss_func(val_predictions.squeeze(),
+                                              labels.float().squeeze())
+                    val_loss = torch.mean(val_weights * temp_val_loss)
                     val_losses.append(val_loss.item())
 
                 net.train()
@@ -274,6 +290,28 @@ def train_nn(net,train_loader, valid_loader, clip=1000 ,epochs=10, print_every=1
                       "Loss: {:.6f}...".format(loss.item()),
                       "Val Loss: {:.6f}".format(np.mean(val_losses)))
     return net
+
+class Network2(nn.Module):
+    def __init__(self, input_dim=600):
+        super().__init__()
+        self.hidden_dim1 = 100
+        self.hidden_dim2 = 10
+        self.layer_1 = torch.nn.Linear(input_dim, self.hidden_dim1)
+        self.layer_2 = torch.nn.Linear(self.hidden_dim1, self.hidden_dim2)
+        self.layer_3 = torch.nn.Linear(self.hidden_dim2, 1)
+        self.activation = F.relu
+
+    def forward(self, x):
+        x = self.layer_1(x)        # x.size() -> [batch_size, self.hidden_dim]
+        x = self.activation(x)     # x.size() -> [batch_size, self.hidden_dim]
+        x = self.layer_2(x)        # x.size() -> [batch_size, 1]
+        x = self.activation(x)
+        x = self.layer_3(x)
+        x = torch.sigmoid(x)
+        return x
+
+
+
 
 
 def add_context(vec_data, context_size, sen_separator):
@@ -334,6 +372,8 @@ def agg_context_mean(X, context_size, vec_length):
 
 
 if __name__ == '__main__':
+
+
     set_seed()
     ####################### To Remove
     with open('glove.pickle', 'rb') as handle:
