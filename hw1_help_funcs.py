@@ -12,6 +12,7 @@ from sklearn import svm
 from sklearn.metrics import f1_score
 from gensim.models import Word2Vec
 import copy
+from pathlib import Path
 
 
 # tomer's code for a seed
@@ -367,6 +368,60 @@ def agg_context_mean(X, context_size, vec_length):
     return X_new
 
 
+def prepare_data(train_filename, dev_filename, test_filename, context_size):
+    # get glove model
+    if Path('glove.pickle').is_file():
+        with open('glove.pickle', 'rb') as handle:
+            glove = pickle.load(handle)
+    else:
+        GLOVE_PATH = 'glove-twitter-200'
+        glove = downloader.load(GLOVE_PATH)
+    # read data files
+    train_data = read_file(train_filename)
+    dev_data = read_file(dev_filename)
+    test_data = read_file(test_filename)
+    # get data embedding
+    vec_train, word2vec_model = data_to_vectors_extra_features(train_data, glove)
+    vec_dev, _ = data_to_vectors_extra_features(dev_data, glove, word2vec_model)
+    vec_test, _ = data_to_vectors_extra_features(test_data, glove, word2vec_model)
+    # get labels
+    _, y_train = sep_X_y(vec_train)
+    _, y_dev = sep_X_y(vec_dev)
+
+    vec_length = vec_train[0][0][0].shape[0]
+
+    sen_separator = np.random.uniform(-1, 1, vec_length)
+    # add context
+    X_train = add_context(vec_train, context_size, sen_separator=sen_separator)
+    X_dev = add_context(vec_dev, context_size, sen_separator=sen_separator)
+    X_test = add_context(vec_test, context_size, sen_separator=sen_separator)
+    # aggregate the context
+    X_train_agg = agg_context_mean(X_train, context_size, vec_length)
+    X_dev_agg = agg_context_mean(X_dev, context_size, vec_length)
+    X_test_agg = agg_context_mean(X_test, context_size, vec_length)
+
+    return X_train_agg, y_train, X_dev_agg, y_dev, X_test_agg
+
+def write_predictions(pred, untagged_path, tagged_path):
+    with open(untagged_path, 'r', encoding="utf8") as file:
+        labeled_file = ''
+        word_index = 0
+        for line in file:
+            if line == '\n':
+                current_word = '\n'
+            else:
+                word_label = pred[word_index][0]
+                current_word = line.replace('\n', '').split("\t")[0] + '\t' + str(word_label) + '\n'
+                word_index += 1
+            labeled_file += current_word
+    if len(labeled_file) != word_index:
+        print("In write predictions, last tag was", word_index + 1, "and the predictions length is", len(pred))
+    with open(tagged_path, 'w', encoding="utf8") as file:
+        file.write(labeled_file)
+
+
+
+
 if __name__ == '__main__':
     set_seed()
     ####################### To Remove
@@ -414,3 +469,5 @@ if __name__ == '__main__':
     nn_dev_predictions = torch.round(net(X_dev_tensor)).detach().numpy()
     print("F1 score for nn model is: {:.2f}".format(
         f1_score(y_dev, nn_dev_predictions)))
+
+
