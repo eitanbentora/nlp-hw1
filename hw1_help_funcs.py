@@ -141,8 +141,9 @@ def data_to_vectors_extra_features(data, glove, word2vec_model=None):
     sentences = [[word[0].lower() for word in sen] for sen in data]
     signs = ['@', '#', '$', '%', '^', '&', '*', '(', ')', ':', '}', '{', ';', '.', '/', ',', '?', '~', '!', '[', ']',
              '-', '_', '"']
+    vector_size=200
     if word2vec_model is None:
-        word2vec_model = Word2Vec(sentences=sentences, vector_size=200, window=5, min_count=1, workers=4, epochs=100)
+        word2vec_model = Word2Vec(sentences=sentences, vector_size=vector_size, window=5, min_count=1, workers=4, epochs=100)
     missing_glove_words = 0
     for i, sen in enumerate(vec_data):
         for j, word in enumerate(sen):
@@ -155,7 +156,7 @@ def data_to_vectors_extra_features(data, glove, word2vec_model=None):
                     missing_glove_words += 1
                     # TODO instead of this use the sentence's/window's avg
                     # print("not suppose to happen...")  # TODO remove
-                    word[0] = (np.random.random(200) * 2 - 1)
+                    word[0] = np.zeros(vector_size)
                 else:
                     word[0] = word2vec_model.wv[word[0].lower()]
             else:
@@ -368,6 +369,25 @@ def agg_context_mean(X, context_size, vec_length):
     return X_new
 
 
+def replace_missing_vecs_with_window_mean(vec_data, vec_length, context_size):
+    X_new = []
+    window_size = 2 * context_size + 1
+    for x in vec_data:
+        x_new = copy.deepcopy(x)
+        x_mean = np.zeros(vec_length)
+        to_fill_range_list = []
+        for i in range(window_size):
+            curr_range = (i * vec_length, (i + 1) * vec_length)
+            if (x[curr_range[0]: curr_range[1]] == np.zeros(vec_length)).all():
+                to_fill_range_list.append(curr_range)
+            x_mean += x[curr_range[0]: curr_range[1]]
+        x_mean = x_mean / window_size - len(to_fill_range_list)
+        for _range in to_fill_range_list:
+            x_new[_range[0]: _range[1]] = x_mean
+        X_new.append(x_new)
+    return X_new
+
+
 def prepare_data(train_filename, dev_filename, test_filename, context_size):
     # get glove model
     if Path('glove.pickle').is_file():
@@ -395,6 +415,12 @@ def prepare_data(train_filename, dev_filename, test_filename, context_size):
     X_train = add_context(vec_train, context_size, sen_separator=sen_separator)
     X_dev = add_context(vec_dev, context_size, sen_separator=sen_separator)
     X_test = add_context(vec_test, context_size, sen_separator=sen_separator)
+
+    # add context
+    X_train = replace_missing_vecs_with_window_mean(X_train, vec_length, context_size)
+    X_dev = replace_missing_vecs_with_window_mean(X_dev, vec_length, context_size)
+    X_test = replace_missing_vecs_with_window_mean(X_test, vec_length, context_size)
+
     # aggregate the context
     X_train_agg = agg_context_mean(X_train, context_size, vec_length)
     X_dev_agg = agg_context_mean(X_dev, context_size, vec_length)

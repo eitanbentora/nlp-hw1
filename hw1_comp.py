@@ -3,7 +3,7 @@ import pickle
 
 if __name__ == '__main__':
     set_seed()
-    to_load_processed_data = True
+    to_load_processed_data = False
 
     _, train_filename, dev_filename, test_filename = sys.argv
     print(train_filename, dev_filename, test_filename)
