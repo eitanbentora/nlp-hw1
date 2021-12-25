@@ -428,6 +428,7 @@ def prepare_data(train_filename, dev_filename, test_filename, context_size):
 
     return X_train_agg, y_train, X_dev_agg, y_dev, X_test_agg
 
+
 def write_predictions(pred, untagged_path, tagged_path):
     with open(untagged_path, 'r', encoding="utf8") as file:
         labeled_file = ''
@@ -437,7 +438,11 @@ def write_predictions(pred, untagged_path, tagged_path):
                 current_word = '\n'
             else:
                 word_label = pred[word_index][0]
-                current_word = line.replace('\n', '').split("\t")[0] + '\t' + str(word_label) + '\n'
+                if word_label == 1:
+                    str_label = 'X'
+                else:
+                    str_label = "O"
+                current_word = line.replace('\n', '').split("\t")[0] + '\t' + str_label + '\n'
                 word_index += 1
             labeled_file += current_word
     if len(labeled_file) != word_index:

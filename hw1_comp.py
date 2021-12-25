@@ -1,12 +1,13 @@
 from hw1_help_funcs import *
-import pickle
-
+import time
 if __name__ == '__main__':
+
     set_seed()
+    _, train_filename, dev_filename, test_filename, save_output_path = sys.argv
+    print(train_filename, dev_filename, test_filename, save_output_path)
+
     to_load_processed_data = False
 
-    _, train_filename, dev_filename, test_filename = sys.argv
-    print(train_filename, dev_filename, test_filename)
     context_size = 4
     # load or create processed_data
     if Path('processed_data.pkl').is_file() and to_load_processed_data:
@@ -17,36 +18,23 @@ if __name__ == '__main__':
         with open('processed_data.pkl', 'wb') as handle:
             pickle.dump([X_train, y_train, X_dev, y_dev, X_test], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    input_dim = len(X_train[0])
-    print('The size of the embedded word vector is', input_dim)
-    net = Network2(input_dim=input_dim)
 
-    # create Tensor datasets
-    train_data = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train))
-    dev_data = TensorDataset(torch.FloatTensor(X_dev), torch.FloatTensor(y_dev))
-
-    # make sure the SHUFFLE your training data
-    batch_size = 20
-
-    train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
-    valid_loader = DataLoader(dev_data, shuffle=False, batch_size=batch_size)
-
-    net_params = {'epochs': 6, 'print_every': 1000, 'clip': 1000,
-                  'lr': 0.0002, 'optimizer': 'Adam',
-                  'loss_func': 'BCELoss', 'weights': [0.7, 1]}
-
-    net = train_nn(net, train_loader, valid_loader, **net_params)
-
-    X_dev_tensor = torch.FloatTensor(X_dev).unsqueeze(0)
-    X_dev_tensor = X_dev_tensor.view(len(X_dev), -1)
-
-    X_test_tensor = torch.FloatTensor(X_test).unsqueeze(0)
-    X_test_tensor = X_test_tensor.view(len(X_test), -1)
-
-    nn_dev_pred = torch.round(net(X_dev_tensor)).detach().numpy()
-    print("F1 score for nn model is: {:.3f}".format(f1_score(y_dev, nn_dev_pred)))
-
-    nn_test_pred = torch.round(net(X_test_tensor)).detach().numpy()
-
-    write_predictions(nn_test_pred, '../data/test.untagged', '../data/test_comp.tagged')
-
+    #  svm model
+    best_f1 = 0
+    best_C = None
+    best_model = None
+    for C in [3.24]:
+        start = time.time()
+        svm_model = svm.SVC(C=C)
+        svm_model.fit(X_train, y_train)
+        with open("models/comp.pkl", 'wb') as f:
+            pickle.dump(svm_model, f)
+        dev_svm_predictions = svm_model.predict(X_dev)
+        f1 = f1_score(y_dev, dev_svm_predictions)
+        if f1 > best_f1:
+            best_f1, best_C, best_model = f1, C, svm_model
+        print("F1 score for svm model is: {:.5f}".format(f1), f"for C={C}")
+        print(f"time: {time.time()-start}")
+    print(f"best C is {best_C}, with F1 score {np.round(best_f1, 3)}")
+    test_svm_predictions = best_model.predict(X_test)
+    write_predictions([[pred] for pred in test_svm_predictions], test_filename, save_output_path)
